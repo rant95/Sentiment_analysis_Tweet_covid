@@ -1,2 +1,2 @@
 # Sentiment_analysis_Tweet_covid
-Python project
+Python & Scala project on Databricks
