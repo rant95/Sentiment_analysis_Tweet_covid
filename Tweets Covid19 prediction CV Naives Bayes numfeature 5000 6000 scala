@@ -1,8 +1,9 @@
 // Databricks notebook source
 // MAGIC %md
-// MAGIC # Project Tweets Covid19 prediction
+// MAGIC # Project Tweets Covid19 prediction CV
 // MAGIC 
-// MAGIC ### RandomForest
+// MAGIC ### Naives Bayes Cross validation
+// MAGIC #### numfeature 5000 6000
 
 // COMMAND ----------
 
@@ -26,18 +27,11 @@ import org.apache.spark.sql.types.{StructType, StructField, StringType}
 import org.apache.spark.sql.functions._
 import sqlContext.implicits._
 import org.apache.spark.ml.feature.StopWordsRemover
-import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
+
 import java.sql.Timestamp
 import org.apache.spark.sql.functions.udf
 import org.apache.spark.sql.types.IntegerType
 import org.apache.spark.sql.functions.to_timestamp
-
-import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator  
-import org.apache.spark.mllib.evaluation.MulticlassMetrics  
-import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics  
-import org.apache.spark.ml.classification.RandomForestClassifier  
-import org.apache.spark.ml.tuning.{ParamGridBuilder, TrainValidationSplit, CrossValidator}  
-import org.apache.spark.ml.feature.{VectorAssembler, StringIndexer, OneHotEncoderEstimator}  
 
 // COMMAND ----------
 
@@ -94,13 +88,9 @@ val withLemmesStringTest = withLemmesTest.withColumn("lemmas", concat_ws(" ",col
 
 // COMMAND ----------
 
-/*import java.sql.Timestamp*/
+import org.apache.spark.ml.feature.StopWordsRemover
 
-
-/*import org.apache.spark.sql.functions.udf
-import org.apache.spark.sql.types.IntegerType
-import org.apache.spark.sql.functions.to_timestamp*/
-
+// COMMAND ----------
 
 val remover = new StopWordsRemover()
     .setStopWords(StopWordsRemover.loadDefaultStopWords("english") 
@@ -109,8 +99,12 @@ val remover = new StopWordsRemover()
     .setOutputCol("filtered_lemmas")
 
 val LemmeswithoutStopwords = remover.transform(withLemmes)
-val LemmeswithoutStopwordsTest = remover.transform(withLemmesTest)
+
     
+
+// COMMAND ----------
+
+val LemmeswithoutStopwordsTest = remover.transform(withLemmesTest)
 
 // COMMAND ----------
 
@@ -138,7 +132,7 @@ val LemmeswithoutStopwordsString = LemmeswithoutStopwords.withColumn("filtered_l
 
 //val withTokens = LemmeswithoutStopwordsString.withColumn("tokens", tokenize(col("filtered_lemmas")))
 
-LemmeswithoutStopwordsString.show(7)
+//withTokens.show(7)
 
 //test data
 
@@ -218,26 +212,9 @@ val withoutStopwords = remover.transform(withTokensSW)*/
 
 // COMMAND ----------
 
-import org.apache.spark.ml.feature.{HashingTF, IDF, Tokenizer}
-
-//val sentenceData = spark.createDataFrame(Seq(
- // (0.0, "Hi I heard about Spark"),
- // (0.0, "I wish Java could use case classes"),
- // (1.0, "Logistic regression models are neat")
-//)).toDF("label", "sentence")
-//val withoutStopwordsString = withTokens.withColumn("tokens", concat_ws(" ",col("tokens")))
-//val tokenizer = new Tokenizer().setInputCol("tokens").setOutputCol("words")
-//val wordsData = tokenizer.transform(withoutStopwordsString)
-//withoutStopwordsString.show(10)
-
-//val withoutStopwordsStringTest = withTokensTest.withColumn("tokens", concat_ws(" ",col("tokens")))
-//val tokenizerTest = new Tokenizer().setInputCol("tokens").setOutputCol("words")
-//val wordsDataTest = tokenizerTest.transform(withoutStopwordsStringTest)
-//withoutStopwordsStringTest.show(10)
-
-
 import org.apache.spark.ml.feature.{RegexTokenizer, Tokenizer}
 import org.apache.spark.sql.functions._
+import org.apache.spark.ml.feature.{HashingTF, IDF, Tokenizer}
 val tokenizer = new Tokenizer().setInputCol("filtered_lemmas").setOutputCol("tokens")
 val regexTokenizer = new RegexTokenizer()
   .setInputCol("filtered_lemmas")
@@ -253,7 +230,7 @@ val withTokensTest = tokenizer.transform(LemmeswithoutStopwordsStringTest)
 // COMMAND ----------
 
 val hashingTF = new HashingTF()
-  .setInputCol("tokens").setOutputCol("rawFeatures").setNumFeatures(15000)
+  .setInputCol("tokens").setOutputCol("rawFeatures").setNumFeatures(6000)
 
 // COMMAND ----------
 
@@ -299,13 +276,13 @@ val rescaledDataRDD = rescaledData2.rdd.map(f => (f.getAs[String](0),f.getAs[Str
 // COMMAND ----------
 
 
-featurizedData.select("Feelings","rawFeatures").printSchema()
-featurizedDataTest.select("Feelings","rawFeatures").printSchema()
+featurizedData.select("Feelings","filtered_lemmas").printSchema()
+featurizedDataTest.select("Feelings","filtered_lemmas").printSchema()
 
 // COMMAND ----------
 
-val featurizedData2=featurizedData.select("Feelings","rawFeatures")
-val featurizedData2Test=featurizedDataTest.select("Feelings","rawFeatures")
+val featurizedData2=featurizedData.select("Feelings","filtered_lemmas")
+val featurizedData2Test=featurizedDataTest.select("Feelings","filtered_lemmas")
 
 
 // COMMAND ----------
@@ -315,7 +292,7 @@ val featurizedData2Test=featurizedDataTest.select("Feelings","rawFeatures")
 // COMMAND ----------
 
 // MAGIC %md
-// MAGIC ### Random Forest CV
+// MAGIC ### Naive Bayes CV
 
 // COMMAND ----------
 
@@ -325,24 +302,16 @@ import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorIndexer}
 import org.apache.spark.ml.classification.NaiveBayes
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
-
-// COMMAND ----------
-
- // columns that need to added to feature column
-/*val cols = Array("rawFeatures")
-import org.apache.spark.ml.feature.{StringIndexer, VectorAssembler}
-import org.apache.spark.ml.tuning.{CrossValidator, CrossValidatorModel, ParamGridBuilder}
-  // VectorAssembler to add feature column
-  // input columns - cols
-  // feature column - features
-  val assembler = new VectorAssembler()
-    .setInputCols("cols")
-    .setOutputCol("features")
-  val featureDf = assembler.transform(featurizedData2)
-  featureDf.printSchema()
-  featureDf.show(10)*/
-
- 
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
+import org.apache.spark.ml.classification.LogisticRegression
+import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+import org.apache.spark.ml.classification.LogisticRegression
+import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+import org.apache.spark.ml.feature.{HashingTF, Tokenizer}
+import org.apache.spark.ml.linalg.Vector
+import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
+import org.apache.spark.sql.Row
 
 // COMMAND ----------
 
@@ -362,7 +331,7 @@ val labeltestDf = labelIndexer.fit(featurizedData2Test).transform(featurizedData
 
 // COMMAND ----------
 
-labelDf.printSchema()
+labeltestDf.printSchema()
 labelDf.show(10)
 
 // COMMAND ----------
@@ -373,13 +342,14 @@ labelDf.show(10)
   val Array(trainingData0, testData0) = labelDf.randomSplit(Array(0.9, 0.1), seed)
   val Array(trainingData1, testData1) = labeltestDf.randomSplit(Array(0.8, 0.2), seed)
 
-val Data=trainingData0.union(trainingData1)
-val test=testData0.union(testData1)
+
 
 // COMMAND ----------
 
-  val seed = 5043
-  val Array(trainingData, testData) = Data.randomSplit(Array(0.7, 0.3), seed)
+val Data=trainingData0.union(trainingData1)
+val test=testData0.union(testData1)
+ 
+   val Array(trainingData, testData) = Data.randomSplit(Array(0.8, 0.2), seed)
 val labeltestDf =test
 
 // COMMAND ----------
@@ -390,27 +360,56 @@ labeltestDf.cache()
 
 // COMMAND ----------
 
-  // train Random Forest model with training data set
-val randomForestClassifier = new RandomForestClassifier()
-    .setImpurity("gini")
-    .setMaxDepth(30)
-    .setNumTrees(150)
-    .setFeatureSubsetStrategy("auto")
-    .setSeed(seed)
-    .setLabelCol("indexedLabel")
-  .setFeaturesCol("rawFeatures")
-// .setMinInstancesPerNode(5)
-val randomForestModel = randomForestClassifier.fit(trainingData)
+import org.apache.spark.ml.tuning.{ParamGridBuilder, TrainValidationSplit, CrossValidator}  
+
+// Configure an ML pipeline, which consists of three stages: tokenizer, hashingTF, and lr.
+val tokenizer = new Tokenizer()
+  .setInputCol("filtered_lemmas")
+  .setOutputCol("words")
+val hashingTF = new HashingTF()
+  .setInputCol(tokenizer.getOutputCol)
+  .setOutputCol("features")
+val naiveBayes = new NaiveBayes().setLabelCol("indexedLabel")
+  
+val pipeline = new Pipeline()
+  .setStages(Array(tokenizer, hashingTF, naiveBayes))
+
+
+
 
 
 // COMMAND ----------
 
-val evaluator = new MulticlassClassificationEvaluator().setLabelCol("indexedLabel").setPredictionCol("prediction").setMetricName("accuracy")
+// We use a ParamGridBuilder to construct a grid of parameters to search over.
+// With 3 values for hashingTF.numFeatures and 2 values for lr.regParam,
+// this grid will have 3 x 2 = 6 parameter settings for CrossValidator to choose from.
+val paramGrid = new ParamGridBuilder()
+  .addGrid(hashingTF.numFeatures, Array(1000, 5000, 10000, 15000))
+  .addGrid(naiveBayes.smoothing, Array(0.1))
+  .build()
+val evaluator = new MulticlassClassificationEvaluator()
+  .setLabelCol("indexedLabel")
+  .setPredictionCol("prediction")
+  .setMetricName("accuracy")
+
+  val cv = new CrossValidator()
+    .setEstimator(pipeline)
+    .setEvaluator(evaluator)
+    .setEstimatorParamMaps(paramGrid)
+    .setNumFolds(2)
+
+
 
 // COMMAND ----------
 
-// test model with test data
-val cvPredictionDf = randomForestModel.transform(testData)
+// You can then treat this object as the model and use fit on it.
+val CVmodel = cv.fit(trainingData)
+
+// COMMAND ----------
+
+
+// test model with validation data
+val cvPredictionDf = CVmodel.transform(testData)
 //cvPredictionTestDf.show(10)
 val cvAccuracy = evaluator.evaluate(cvPredictionDf)
 println(cvAccuracy)
@@ -418,20 +417,38 @@ println(cvAccuracy)
 // COMMAND ----------
 
 // test model with test data
-val cvPredictionTestDf = randomForestModel.transform(labeltestDf)
+val cvPredictionTestDf = CVmodel.transform(labeltestDf)
 //cvPredictionTestDf.show(10)
 val cvAccuracyTest = evaluator.evaluate(cvPredictionTestDf)
 println(cvAccuracyTest)
 
 // COMMAND ----------
 
-import org.apache.spark.ml.classification._
-import org.apache.spark.ml.evaluation._
-import org.apache.spark.ml.tuning._
-//println(CVmodel.asInstanceOf[RandomForestClassificationModel].toDebugString)
+CVmodel.avgMetrics
+
 
 // COMMAND ----------
 
+CVmodel.getEstimatorParamMaps
+
+// COMMAND ----------
+
+CVmodel.params.toList.mkString("(", ",", ")")
+
+
+// COMMAND ----------
+
+CVmodel.explainParams()
+
+
+// COMMAND ----------
+
+CVmodel.bestModel.extractParamMap().toString()
+
+// COMMAND ----------
+
+import org.apache.spark.mllib.evaluation.MulticlassMetrics  
+import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics 
 val predictionAndLabels=cvPredictionDf.select("prediction","indexedLabel").rdd.map(f => (f.getAs[Double](0),f.getAs[Double](1)))
 
 // Instantiate a new metrics objects
@@ -464,14 +481,9 @@ labels.foreach { l =>
   println(s"F1-Score($l) = " + mMetrics.fMeasure(l))
 }
 
-
 // COMMAND ----------
 
-println(randomForestModel.toDebugString)
-
-// COMMAND ----------
-
-val predictionAndLabelsTest=cvPredictionTestDf.select("prediction","indexedLabel").rdd.map(f => (f.getAs[Double](0),f.getAs[Double](1)))
+val predictionAndLabelsTest=cvPredictionDf.select("prediction","indexedLabel").rdd.map(f => (f.getAs[Double](0),f.getAs[Double](1)))
 
 // Instantiate a new metrics objects
 //val bMetrics = new BinaryClassificationMetrics(predictionAndLabels)
@@ -503,10 +515,9 @@ labels.foreach { l =>
   println(s"F1-Score($l) = " + mMetrics.fMeasure(l))
 }
 
-
 // COMMAND ----------
 
-val bMetrics = new BinaryClassificationMetrics(predictionAndLabelsTest)
+val bMetrics = new BinaryClassificationMetrics(predictionAndLabels)
 // Precision by threshold
 val precision = bMetrics.precisionByThreshold
 precision.foreach { case (t, p) =>
@@ -551,7 +562,7 @@ println("Area under ROC = " + auROC)
 
 // COMMAND ----------
 
-val bMetrics = new BinaryClassificationMetrics(predictionAndLabels)
+val bMetrics = new BinaryClassificationMetrics(predictionAndLabelsTest)
 // Precision by threshold
 val precision = bMetrics.precisionByThreshold
 precision.foreach { case (t, p) =>
